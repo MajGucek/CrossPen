@@ -26,11 +26,15 @@ impl MainScreen {
         let mut next_state = None;
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
-                if ui.button("Sender").clicked() {
-                    next_state = Some(AppState::Sender(SenderScreen::default()));
+                #[cfg(target_os = "linux")] {
+                    if ui.button("Sender").clicked() {
+                        next_state = Some(AppState::Sender(SenderScreen::default()));
+                    }
                 }
-                if ui.button("Receiver").clicked() {
-                    next_state = Some(AppState::Receiver(ReceiverScreen::default()));
+                #[cfg(target_os = "windows")] {
+                    if ui.button("Receiver").clicked() {
+                        next_state = Some(AppState::Receiver(ReceiverScreen::default()));
+                    }
                 }
             });
 
@@ -47,64 +51,67 @@ struct SenderScreen {
 }
 impl SenderScreen {
     pub fn startup(&mut self) {
-        let (kill_tx, kill_rx) = crossbeam_channel::bounded::<()>(0);
-        let (data_tx, data_rx) = crossbeam_channel::unbounded::<String>();
+        #[cfg(target_os = "linux")] {
+            let (kill_tx, kill_rx) = crossbeam_channel::bounded::<()>(0);
+            let (data_tx, data_rx) = crossbeam_channel::unbounded::<String>();
 
-        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-        socket.set_broadcast(true).unwrap();
+            let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+            socket.set_broadcast(true).unwrap();
 
-        let handle = std::thread::spawn(move || {
-            log::info!("Sender network thread spawned");
-            loop {
-                select! {
-                recv(data_rx) -> msg => {
-                    if let Ok(message_to_send) = msg {
-                        let _ = socket.send_to(message_to_send.as_bytes(), "255.255.255.255:8888");
-                    }
-                }
-                recv(kill_rx) -> _ => break,
-            }
-            }
-        });
-
-        let input_data_tx = data_tx.clone();
-
-        let input_handle = std::thread::spawn(move || {
-            let mut tablet = evdev::enumerate()
-                .map(|(_, d)| d)
-                .find(|d| d.supported_events().contains(evdev::EventType::ABSOLUTE))
-                .expect("Tablet not found");
-
-            let mut pen_state = PenData::default();
-
-            loop {
-                if let Ok(events) = tablet.fetch_events() {
-                    for ev in events {
-                        match ev.event_type() {
-                            evdev::EventType::ABSOLUTE => match ev.code() {
-                                0 => pen_state.x = ev.value() as f32 / 32767.0,
-                                1 => pen_state.y = ev.value() as f32 / 32767.0,
-                                24 => pen_state.pressure = ev.value() as f32 / 1024.0,
-                                _ => {}
-                            },
-                            evdev::EventType::KEY => match ev.code() {
-                                330 => pen_state.is_touching = ev.value() == 1,
-                                333 => pen_state.button_1 = ev.value() == 1,
-                                334 => pen_state.button_2 = ev.value() == 1,
-                                _ => {}
-                            },
-                            _ => {}
+            let handle = std::thread::spawn(move || {
+                log::info!("Sender network thread spawned");
+                loop {
+                    select! {
+                    recv(data_rx) -> msg => {
+                        if let Ok(message_to_send) = msg {
+                            let _ = socket.send_to(message_to_send.as_bytes(), "255.255.255.255:8888");
                         }
-                        let _ = input_data_tx.try_send(serde_json::to_string(&pen_state).unwrap());
+                    }
+                    recv(kill_rx) -> _ => break,
+                }
+                }
+            });
+
+            let input_data_tx = data_tx.clone();
+
+            let input_handle = std::thread::spawn(move || {
+                let mut tablet = evdev::enumerate()
+                    .map(|(_, d)| d)
+                    .find(|d| d.supported_events().contains(evdev::EventType::ABSOLUTE))
+                    .expect("Tablet not found");
+
+                let mut pen_state = PenData::default();
+
+                loop {
+                    if let Ok(events) = tablet.fetch_events() {
+                        for ev in events {
+                            log::info!(ev);
+                            match ev.event_type() {
+                                evdev::EventType::ABSOLUTE => match ev.code() {
+                                    0 => pen_state.x = ev.value() as f32 / 32767.0,
+                                    1 => pen_state.y = ev.value() as f32 / 32767.0,
+                                    24 => pen_state.pressure = ev.value() as f32 / 1024.0,
+                                    _ => {}
+                                },
+                                evdev::EventType::KEY => match ev.code() {
+                                    330 => pen_state.is_touching = ev.value() == 1,
+                                    333 => pen_state.button_1 = ev.value() == 1,
+                                    334 => pen_state.button_2 = ev.value() == 1,
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                            let _ = input_data_tx.try_send(serde_json::to_string(&pen_state).unwrap());
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        self.kill_signal = Some(kill_tx);
-        self.data_signal = Some(data_tx);
-        self.input_handle = Some(input_handle);
-        self.thread_handle = Some(handle);
+            self.kill_signal = Some(kill_tx);
+            self.data_signal = Some(data_tx);
+            self.input_handle = Some(input_handle);
+            self.thread_handle = Some(handle);
+        }
     }
     fn shutdown(&mut self) {
         if let Some(ref killer) = self.kill_signal {
