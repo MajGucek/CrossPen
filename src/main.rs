@@ -137,21 +137,12 @@ impl SenderScreen {
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
-
-
-        ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
-            ui.vertical_centered(|ui| {
-                if ui.button("test").clicked() {
-                }
-                if ui.button("Exit").clicked() {
-                    self.shutdown();
-                    next_state = Some(AppState::Main(MainScreen {}));
-                }
-            });
-        });
-
-
-
+        
+        if ui.button("Exit").clicked() {
+            self.shutdown();
+            next_state = Some(AppState::Main(MainScreen {}));
+        }
+        
         next_state
     }
 }
