@@ -78,7 +78,9 @@ impl SenderScreen {
 
             let input_handle = thread::spawn(move || {
 
-                log::info!("{:?}", evdev::enumerate());
+                evdev::enumerate().for_each(|a| {
+                    log::info!("{:?}", a);
+                });
                 let mut tablet = evdev::enumerate()
                     .map(|(_, d)| d)
                     .find(|d| {
