@@ -1,10 +1,12 @@
 use std::net::UdpSocket;
+use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use crossbeam_channel::{select, Receiver, Sender};
 use eframe::egui::{CentralPanel, Direction, Event, Layout, TextBuffer, Ui, ViewportCommand, Visuals};
 use eframe::{CreationContext, Frame, NativeOptions};
 use env_logger::Env;
+use evdev::EventType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -74,35 +76,38 @@ impl SenderScreen {
 
             let input_data_tx = data_tx.clone();
 
-            let input_handle = std::thread::spawn(move || {
+            let input_handle = thread::spawn(move || {
+
+                log::info!(evdev::enumerate());
                 let mut tablet = evdev::enumerate()
                     .map(|(_, d)| d)
-                    .find(|d| d.supported_events().contains(evdev::EventType::ABSOLUTE))
+                    .find(|d| {
+                        let evs = d.supported_events();
+                        evs.contains(EventType::ABSOLUTE) && evs.contains(EventType::KEY)
+                    })
                     .expect("Tablet not found");
 
                 let mut pen_state = PenData::default();
-
                 loop {
                     if let Ok(events) = tablet.fetch_events() {
                         for ev in events {
-                            log::info!("{}", format!("{:?}", ev));
                             match ev.event_type() {
                                 evdev::EventType::ABSOLUTE => match ev.code() {
                                     0 => pen_state.x = ev.value() as f32 / 32767.0,
                                     1 => pen_state.y = ev.value() as f32 / 32767.0,
-                                    24 => pen_state.pressure = ev.value() as f32 / 1024.0,
+                                    24 | 58 => pen_state.pressure = ev.value() as f32 / 1024.0,
                                     _ => {}
                                 },
                                 evdev::EventType::KEY => match ev.code() {
                                     330 => pen_state.is_touching = ev.value() == 1,
-                                    333 => pen_state.button_1 = ev.value() == 1,
-                                    334 => pen_state.button_2 = ev.value() == 1,
+                                    320 | 333 => pen_state.button_1 = ev.value() == 1,
+                                    321 | 334 => pen_state.button_2 = ev.value() == 1,
                                     _ => {}
                                 },
                                 _ => {}
                             }
-                            let _ = input_data_tx.try_send(serde_json::to_string(&pen_state).unwrap());
                         }
+                        let _ = input_data_tx.try_send(serde_json::to_string(&pen_state).unwrap());
                     }
                 }
             });
