@@ -2,9 +2,18 @@ use std::net::UdpSocket;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use crossbeam_channel::{select, Receiver, Sender};
-use eframe::egui::{CentralPanel, Direction, Layout, TextBuffer, Ui, ViewportCommand, Visuals};
+use eframe::egui::{CentralPanel, Direction, Event, Layout, TextBuffer, Ui, ViewportCommand, Visuals};
 use eframe::{CreationContext, Frame, NativeOptions};
 use env_logger::Env;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct PenData {
+    pub x: f32,
+    pub y: f32,
+    pub pressure: f32,
+    pub is_touching: bool,
+}
 
 
 #[derive(Debug, Default)]
@@ -72,12 +81,40 @@ impl SenderScreen {
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
+
+        let mut current_pen = PenData::default();
+        let mut pen_active = false;
+
+        ui.ctx().input(|i| {
+            if let Some(pos) = i.pointer.latest_pos() {
+                let rect = ui.ctx().screen_rect();
+                current_pen.x = pos.x / rect.width();
+                current_pen.y = pos.y / rect.height();
+                pen_active = true;
+            }
+            current_pen.is_touching = i.pointer.any_down();
+            if current_pen.is_touching {
+                current_pen.pressure = 1.;
+            }
+
+            for event in &i.events {
+                if let Event::Touch { force: Some(f), .. } = event {
+                    current_pen.pressure = *f;
+                }
+            }
+        });
+
+        if pen_active {
+            if let Some(ref sender) = self.data_signal {
+                if let Ok(json) = serde_json::to_string(&current_pen) {
+                    let _ = sender.send(json);
+                }
+            }
+        }
+
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
                 if ui.button("test").clicked() {
-                    if let Some(ref sender) = self.data_signal {
-                        sender.send(format!("Klik!"));
-                    }
                 }
                 if ui.button("Exit").clicked() {
                     self.shutdown();
@@ -97,7 +134,7 @@ struct ReceiverScreen {
     thread_handle: Option<JoinHandle<()>>,
     kill_signal: Option<Sender<()>>,
     data_receiver: Option<Receiver<String>>,
-    times_clicked: i64,
+    pen_data: PenData,
 }
 impl ReceiverScreen {
     pub fn startup(&mut self) {
@@ -145,13 +182,13 @@ impl ReceiverScreen {
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
         if let Some(ref receiver) = self.data_receiver {
-            while let Ok(_msg) = receiver.try_recv() {
-                self.times_clicked += 1;
+            while let Ok(msg) = receiver.try_recv() {
+                self.pen_data = serde_json::from_str::<PenData>(msg.as_str()).unwrap_or(PenData::default());
             }
         }
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
-                ui.label(format!("{}", self.times_clicked));
+                ui.label(format!("{:?}", self.pen_data));
                 if ui.button("Exit").clicked() {
                     self.shutdown();
                     next_state = Some(AppState::Main(MainScreen {}));
