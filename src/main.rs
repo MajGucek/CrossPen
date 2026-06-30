@@ -94,9 +94,9 @@ impl SenderScreen {
                         for ev in events {
                             match ev.event_type() {
                                 evdev::EventType::ABSOLUTE => match ev.code() {
-                                    0 => pen_state.x = ev.value() as f32,
-                                    1 => pen_state.y = ev.value() as f32,
-                                    24 | 58 => pen_state.pressure = ev.value() as f32,
+                                    0 => pen_state.x = ev.value() as f32 / 19420.,
+                                    1 => pen_state.y = ev.value() as f32 / 11100.,
+                                    24 | 58 => pen_state.pressure = ev.value() as f32 / 255.,
                                     _ => {}
                                 },
                                 evdev::EventType::KEY => {
