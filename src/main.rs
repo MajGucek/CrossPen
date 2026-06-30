@@ -13,6 +13,8 @@ struct PenData {
     pub y: f32,
     pub pressure: f32,
     pub is_touching: bool,
+    pub button_1: bool,
+    pub button_2: bool,
 }
 
 
@@ -41,34 +43,68 @@ struct SenderScreen {
     thread_handle: Option<JoinHandle<()>>,
     kill_signal: Option<Sender<()>>,
     data_signal: Option<Sender<String>>,
-    pen_state: PenData,
+    input_handle: Option<JoinHandle<()>>,
 }
 impl SenderScreen {
     pub fn startup(&mut self) {
         let (kill_tx, kill_rx) = crossbeam_channel::bounded::<()>(0);
-        let (data_tx, data_rx) = crossbeam_channel::bounded::<String>(100);
+        let (data_tx, data_rx) = crossbeam_channel::unbounded::<String>();
+
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
         socket.set_broadcast(true).unwrap();
+
         let handle = std::thread::spawn(move || {
-            log::info!("Sender background thread spawned");
+            log::info!("Sender network thread spawned");
             loop {
                 select! {
-                    recv(data_rx) -> msg => {
-                        if let Ok(message_to_send) = msg {
-                            log::info!("Sending: {:?}", message_to_send.as_str());
-                            socket.send_to(message_to_send.as_bytes(), "255.255.255.255:8888");
-                        }
+                recv(data_rx) -> msg => {
+                    if let Ok(message_to_send) = msg {
+                        let _ = socket.send_to(message_to_send.as_bytes(), "255.255.255.255:8888");
                     }
-                    recv(kill_rx) -> _ => {
-                        break;
+                }
+                recv(kill_rx) -> _ => break,
+            }
+            }
+        });
+
+        let input_data_tx = data_tx.clone();
+
+        let input_handle = std::thread::spawn(move || {
+            let mut tablet = evdev::enumerate()
+                .map(|(_, d)| d)
+                .find(|d| d.supported_events().contains(evdev::EventType::ABSOLUTE))
+                .expect("Tablet not found");
+
+            let mut pen_state = PenData::default();
+
+            loop {
+                if let Ok(events) = tablet.fetch_events() {
+                    for ev in events {
+                        match ev.event_type() {
+                            evdev::EventType::ABSOLUTE => match ev.code() {
+                                0 => pen_state.x = ev.value() as f32 / 32767.0,
+                                1 => pen_state.y = ev.value() as f32 / 32767.0,
+                                24 => pen_state.pressure = ev.value() as f32 / 1024.0,
+                                _ => {}
+                            },
+                            evdev::EventType::KEY => match ev.code() {
+                                330 => pen_state.is_touching = ev.value() == 1,
+                                333 => pen_state.button_1 = ev.value() == 1,
+                                334 => pen_state.button_2 = ev.value() == 1,
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                        let _ = input_data_tx.try_send(serde_json::to_string(&pen_state).unwrap());
                     }
                 }
             }
-            log::info!("exited sender thread");
         });
-        self.thread_handle = Some(handle);
+
         self.kill_signal = Some(kill_tx);
         self.data_signal = Some(data_tx);
+        self.input_handle = Some(input_handle);
+        self.thread_handle = Some(handle);
     }
     fn shutdown(&mut self) {
         if let Some(ref killer) = self.kill_signal {
@@ -79,54 +115,13 @@ impl SenderScreen {
         if let Some(handle) = self.thread_handle.take() {
             let _ = handle.join();
         }
+        if let Some(input) = self.input_handle.take() {
+            let _ = input.join();
+        }
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
 
-        let mut changed = false;
-
-        // 1. Inspect the input to update our persistent state
-        ui.ctx().input(|i| {
-            // Update position from latest pointer
-            if let Some(pos) = i.pointer.latest_pos() {
-                let rect = i.screen_rect();
-                self.pen_state.x = pos.x / rect.width();
-                self.pen_state.y = pos.y / rect.height();
-                changed = true;
-            }
-
-            // Update touch status
-            if self.pen_state.is_touching != i.pointer.any_down() {
-                self.pen_state.is_touching = i.pointer.any_down();
-                changed = true;
-            }
-
-            // 2. IMPORTANT: Process ALL events to catch pressure changes
-            for event in &i.events {
-                match event {
-                    Event::Touch { force, .. } => {
-                        if let Some(f) = force {
-                            self.pen_state.pressure = *f;
-                            changed = true;
-                        }
-                    }
-                    Event::PointerButton { pressed, .. } => {
-                        self.pen_state.is_touching = *pressed;
-                        changed = true;
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        // 3. Only send if something actually changed
-        if changed {
-            if let Some(ref sender) = self.data_signal {
-                if let Ok(json) = serde_json::to_string(&self.pen_state) {
-                    let _ = sender.try_send(json);
-                }
-            }
-        }
 
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
