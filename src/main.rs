@@ -1,12 +1,12 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod stylus;
 
 use std::net::UdpSocket;
-use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use crossbeam_channel::{select, Receiver, Sender};
-use eframe::egui::{CentralPanel, Direction, Event, Layout, TextBuffer, Ui, ViewportCommand, Visuals};
-use eframe::{CreationContext, Frame, NativeOptions};
+use crossbeam_channel::{Receiver, Sender};
+use eframe::egui::{Direction, Layout, Ui, ViewportCommand, Visuals};
+use eframe::{Frame, NativeOptions};
 use env_logger::Env;
 use serde::{Deserialize, Serialize};
 
@@ -170,7 +170,7 @@ impl ReceiverScreen {
                     break;
                 }
                 match socket.recv_from(&mut buf) {
-                    Ok((amt, src)) => {
+                    Ok((amt, _src)) => {
                         let _ = data_tx.send(String::from_utf8_lossy(&buf[..amt]).to_string());
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
@@ -208,7 +208,7 @@ impl ReceiverScreen {
         }
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
-                ui.label(format!("{:?}", self.pen_data));
+                //ui.label(format!("{:?}", self.pen_data));
                 stylus::run(&self.pen_data);
                 if ui.button("Exit").clicked() {
                     self.shutdown();
@@ -265,7 +265,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         ui.request_repaint_after(Duration::from_millis(1));
         self.state.ui(ui);
     }
