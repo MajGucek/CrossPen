@@ -41,6 +41,7 @@ struct SenderScreen {
     thread_handle: Option<JoinHandle<()>>,
     kill_signal: Option<Sender<()>>,
     data_signal: Option<Sender<String>>,
+    pen_state: PenData,
 }
 impl SenderScreen {
     pub fn startup(&mut self) {
@@ -82,38 +83,46 @@ impl SenderScreen {
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
 
-        let mut current_pen = PenData::default();
-        let mut pen_active = false;
-        let (latest_pos, any_down, events) = ui.ctx().input(|i| {
-            (i.pointer.latest_pos(), i.pointer.any_down(), i.events.clone())
+        let mut changed = false;
+
+        // 1. Inspect the input to update our persistent state
+        ui.ctx().input(|i| {
+            // Update position from latest pointer
+            if let Some(pos) = i.pointer.latest_pos() {
+                let rect = i.screen_rect();
+                self.pen_state.x = pos.x / rect.width();
+                self.pen_state.y = pos.y / rect.height();
+                changed = true;
+            }
+
+            // Update touch status
+            if self.pen_state.is_touching != i.pointer.any_down() {
+                self.pen_state.is_touching = i.pointer.any_down();
+                changed = true;
+            }
+
+            // 2. IMPORTANT: Process ALL events to catch pressure changes
+            for event in &i.events {
+                match event {
+                    Event::Touch { force, .. } => {
+                        if let Some(f) = force {
+                            self.pen_state.pressure = *f;
+                            changed = true;
+                        }
+                    }
+                    Event::PointerButton { pressed, .. } => {
+                        self.pen_state.is_touching = *pressed;
+                        changed = true;
+                    }
+                    _ => {}
+                }
+            }
         });
 
-        let mut current_pen = PenData::default();
-        let mut pen_active = false;
-
-        if let Some(pos) = latest_pos {
-            let rect = ui.ctx().screen_rect();
-            current_pen.x = pos.x / rect.width();
-            current_pen.y = pos.y / rect.height();
-            pen_active = true;
-        }
-
-        current_pen.is_touching = any_down;
-        if current_pen.is_touching {
-            current_pen.pressure = 1.0;
-        }
-
-
-        for event in &events {
-            if let Event::Touch { force: Some(f), .. } = event {
-                current_pen.pressure = *f;
-            }
-        }
-
-
-        if pen_active {
+        // 3. Only send if something actually changed
+        if changed {
             if let Some(ref sender) = self.data_signal {
-                if let Ok(json) = serde_json::to_string(&current_pen) {
+                if let Ok(json) = serde_json::to_string(&self.pen_state) {
                     let _ = sender.try_send(json);
                 }
             }
