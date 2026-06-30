@@ -4,7 +4,7 @@ mod stylus;
 use std::net::UdpSocket;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{select, Receiver, Sender};
 use eframe::egui::{Direction, Layout, Ui, ViewportCommand, Visuals};
 use eframe::{Frame, NativeOptions};
 use env_logger::Env;
@@ -77,7 +77,7 @@ impl SenderScreen {
 
             let input_data_tx = data_tx.clone();
 
-            let input_handle = thread::spawn(move || {
+            let input_handle = std::thread::spawn(move || {
 
                 evdev::enumerate().for_each(|a| {
                     log::info!("{:?}", a);
@@ -200,8 +200,8 @@ impl ReceiverScreen {
         }
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
+        let mut next_state = None;
         #[cfg(target_os = "windows")] {
-            let mut next_state = None;
             if let Some(ref receiver) = self.data_receiver {
                 while let Ok(msg) = receiver.try_recv() {
                     self.pen_data = serde_json::from_str::<PenData>(msg.as_str()).unwrap_or(PenData::default());
@@ -220,8 +220,8 @@ impl ReceiverScreen {
 
 
 
-            next_state
         }
+        next_state
     }
 }
 
