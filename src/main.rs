@@ -102,9 +102,9 @@ impl SenderScreen {
                                 evdev::EventType::KEY => {
                                     log::info!("DEBUG: Key Code: {} Value: {}", ev.code(), ev.value());
                                     match ev.code() {
-                                        330 => pen_state.is_touching = ev.value() == 1,
-                                        320 | 333 => pen_state.button_1 = ev.value() == 1,
-                                        321 | 334 => pen_state.button_2 = ev.value() == 1,
+                                        330 => pen_state.is_touching = ev.value() == 1, // Pen Tip
+                                        320 => pen_state.button_1 = ev.value() == 1,    // Side Button 1
+                                        331 => pen_state.button_2 = ev.value() == 1,    // Side Button 2
                                         _ => {}
                                     }
                                 },
