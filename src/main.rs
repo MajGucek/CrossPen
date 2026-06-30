@@ -84,30 +84,37 @@ impl SenderScreen {
 
         let mut current_pen = PenData::default();
         let mut pen_active = false;
-
-        ui.ctx().input(|i| {
-            if let Some(pos) = i.pointer.latest_pos() {
-                let rect = ui.ctx().screen_rect();
-                current_pen.x = pos.x / rect.width();
-                current_pen.y = pos.y / rect.height();
-                pen_active = true;
-            }
-            current_pen.is_touching = i.pointer.any_down();
-            if current_pen.is_touching {
-                current_pen.pressure = 1.;
-            }
-
-            for event in &i.events {
-                if let Event::Touch { force: Some(f), .. } = event {
-                    current_pen.pressure = *f;
-                }
-            }
+        let (latest_pos, any_down, events) = ui.ctx().input(|i| {
+            (i.pointer.latest_pos(), i.pointer.any_down(), i.events.clone())
         });
+
+        let mut current_pen = PenData::default();
+        let mut pen_active = false;
+
+        if let Some(pos) = latest_pos {
+            let rect = ui.ctx().screen_rect();
+            current_pen.x = pos.x / rect.width();
+            current_pen.y = pos.y / rect.height();
+            pen_active = true;
+        }
+
+        current_pen.is_touching = any_down;
+        if current_pen.is_touching {
+            current_pen.pressure = 1.0;
+        }
+
+
+        for event in &events {
+            if let Event::Touch { force: Some(f), .. } = event {
+                current_pen.pressure = *f;
+            }
+        }
+
 
         if pen_active {
             if let Some(ref sender) = self.data_signal {
                 if let Ok(json) = serde_json::to_string(&current_pen) {
-                    let _ = sender.send(json);
+                    let _ = sender.try_send(json);
                 }
             }
         }
