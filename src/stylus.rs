@@ -1,11 +1,16 @@
+
+#[cfg(target_os = "windows")]
 pub mod stylus {
+
     use crate::PenData;
     use std::sync::{Mutex, OnceLock};
+
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{LoadCursorW, CopyImage, SetSystemCursor, SystemParametersInfoW, IDC_HAND, IMAGE_CURSOR, IMAGE_FLAGS, OCR_NORMAL, SPI_SETCURSORS, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, HCURSOR};
     use windows::Win32::Foundation::HANDLE;
 
-    // THIS CODE IS AI GENERATED, if you think I'm going to spend hours researching non-existing documentation, you're wrong.
+
+// THIS CODE IS AI GENERATED, if you think I'm going to spend hours researching non-existing documentation, you're wrong.
     // I'm actually kind of impressed this just doesn't implode since there is so much unsafe ;)
 
     const SENSITIVITY: f32 = 0.05;
@@ -128,7 +133,6 @@ pub mod stylus {
             },
         }
     }
-
 
 
     fn set_grab_cursor(enabled: bool) {
