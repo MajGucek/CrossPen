@@ -200,26 +200,28 @@ impl ReceiverScreen {
         }
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
-        let mut next_state = None;
-        if let Some(ref receiver) = self.data_receiver {
-            while let Ok(msg) = receiver.try_recv() {
-                self.pen_data = serde_json::from_str::<PenData>(msg.as_str()).unwrap_or(PenData::default());
-            }
-        }
-        ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
-            ui.vertical_centered(|ui| {
-                //ui.label(format!("{:?}", self.pen_data));
-                stylus::run(&self.pen_data);
-                if ui.button("Exit").clicked() {
-                    self.shutdown();
-                    next_state = Some(AppState::Main(MainScreen {}));
+        #[cfg(target_os = "windows")] {
+            let mut next_state = None;
+            if let Some(ref receiver) = self.data_receiver {
+                while let Ok(msg) = receiver.try_recv() {
+                    self.pen_data = serde_json::from_str::<PenData>(msg.as_str()).unwrap_or(PenData::default());
                 }
+            }
+            ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
+                ui.vertical_centered(|ui| {
+                    //ui.label(format!("{:?}", self.pen_data));
+                    stylus::stylus::run(&self.pen_data);
+                    if ui.button("Exit").clicked() {
+                        self.shutdown();
+                        next_state = Some(AppState::Main(MainScreen {}));
+                    }
+                });
             });
-        });
 
 
 
-        next_state
+            next_state
+        }
     }
 }
 
