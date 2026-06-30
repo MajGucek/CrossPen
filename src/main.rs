@@ -85,7 +85,7 @@ impl SenderScreen {
                 loop {
                     if let Ok(events) = tablet.fetch_events() {
                         for ev in events {
-                            log::info!(ev);
+                            log::info!(format!("{:?}", ev));
                             match ev.event_type() {
                                 evdev::EventType::ABSOLUTE => match ev.code() {
                                     0 => pen_state.x = ev.value() as f32 / 32767.0,
