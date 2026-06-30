@@ -1,3 +1,5 @@
+mod stylus;
+
 use std::net::UdpSocket;
 use std::thread;
 use std::thread::JoinHandle;
@@ -137,12 +139,12 @@ impl SenderScreen {
     }
     pub fn run_ui(&mut self, ui: &mut Ui) -> Option<AppState> {
         let mut next_state = None;
-        
+
         if ui.button("Exit").clicked() {
             self.shutdown();
             next_state = Some(AppState::Main(MainScreen {}));
         }
-        
+
         next_state
     }
 }
@@ -207,6 +209,7 @@ impl ReceiverScreen {
         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
             ui.vertical_centered(|ui| {
                 ui.label(format!("{:?}", self.pen_data));
+                stylus::run(&self.pen_data);
                 if ui.button("Exit").clicked() {
                     self.shutdown();
                     next_state = Some(AppState::Main(MainScreen {}));
