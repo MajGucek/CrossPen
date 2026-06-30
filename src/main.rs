@@ -6,7 +6,6 @@ use crossbeam_channel::{select, Receiver, Sender};
 use eframe::egui::{CentralPanel, Direction, Event, Layout, TextBuffer, Ui, ViewportCommand, Visuals};
 use eframe::{CreationContext, Frame, NativeOptions};
 use env_logger::Env;
-use evdev::EventType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -85,7 +84,7 @@ impl SenderScreen {
                     .map(|(_, d)| d)
                     .find(|d| {
                         let evs = d.supported_events();
-                        evs.contains(EventType::ABSOLUTE) && evs.contains(EventType::KEY)
+                        evs.contains(evdev::EventType::ABSOLUTE) && evs.contains(evdev::EventType::KEY)
                     })
                     .expect("Tablet not found");
 
@@ -95,16 +94,19 @@ impl SenderScreen {
                         for ev in events {
                             match ev.event_type() {
                                 evdev::EventType::ABSOLUTE => match ev.code() {
-                                    0 => pen_state.x = ev.value() as f32 / 32767.0,
-                                    1 => pen_state.y = ev.value() as f32 / 32767.0,
-                                    24 | 58 => pen_state.pressure = ev.value() as f32 / 1024.0,
+                                    0 => pen_state.x = ev.value() as f32,
+                                    1 => pen_state.y = ev.value() as f32,
+                                    24 | 58 => pen_state.pressure = ev.value() as f32,
                                     _ => {}
                                 },
-                                evdev::EventType::KEY => match ev.code() {
-                                    330 => pen_state.is_touching = ev.value() == 1,
-                                    320 | 333 => pen_state.button_1 = ev.value() == 1,
-                                    321 | 334 => pen_state.button_2 = ev.value() == 1,
-                                    _ => {}
+                                evdev::EventType::KEY => {
+                                    log::info!("DEBUG: Key Code: {} Value: {}", ev.code(), ev.value());
+                                    match ev.code() {
+                                        330 => pen_state.is_touching = ev.value() == 1,
+                                        320 | 333 => pen_state.button_1 = ev.value() == 1,
+                                        321 | 334 => pen_state.button_2 = ev.value() == 1,
+                                        _ => {}
+                                    }
                                 },
                                 _ => {}
                             }
